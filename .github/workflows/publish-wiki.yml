@@ -1,0 +1,34 @@
+name: Test wiki synchronization
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publier réellement dans le wiki"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-wiki
+  cancel-in-progress: true
+
+jobs:
+  publish-wiki:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Synchronize dossier-sync with the wiki
+        uses: Andrew-Chen-Wang/github-wiki-action@1bbb4280446f9630e8e21a18012cbacf3b0f992e # v5.0.6
+        with:
+          path: dossier-sync
+          strategy: clone
+          dry-run: ${{ !inputs.publish }}
+          disable-empty-commits: true
+          commit-message: "Synchronize wiki from repository ${{ github.sha }}"
