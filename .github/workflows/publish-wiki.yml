@@ -24,11 +24,56 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Synchronize dossier-sync with the wiki
+      - name: Prepare wiki content
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Commencer avec toutes les pages actuellement présentes dans le wiki.
+          gh auth setup-git
+          git clone \
+            "https://github.com/${GITHUB_REPOSITORY}.wiki.git" \
+            wiki-stage
+
+          # Le dossier doit devenir un simple dossier de contenu.
+          rm -rf wiki-stage/.git
+
+          # Supprimer uniquement les anciennes pages gérées depuis doc/.
+          # Les pages manuelles comme Home.md restent intactes.
+          rm -f wiki-stage/Doc-*.md
+
+          # Transformer l’arborescence doc/ en pages wiki à la racine.
+          while IFS= read -r -d '' source; do
+            relative="${source#doc/}"
+            page="${relative%.md}"
+            page="${page//\//-}"
+            page="${page// /-}"
+
+            destination="wiki-stage/Doc-${page}.md"
+
+            if [[ -e "$destination" ]]; then
+              echo "::error::Collision de page wiki : $destination"
+              exit 1
+            fi
+
+            cp "$source" "$destination"
+            echo "$source -> $destination"
+          done < <(find doc -type f -name '*.md' -print0 | sort -z)
+
+          # Protections contre une publication accidentellement vide.
+          test -f wiki-stage/Home.md
+          test -n "$(find wiki-stage -maxdepth 1 -type f -name 'Doc-*.md' -print -quit)"
+
+          echo "Pages préparées :"
+          find wiki-stage -maxdepth 1 -type f -printf '%f\n' | sort
+
+      - name: Synchronize prepared content with the wiki
         uses: Andrew-Chen-Wang/github-wiki-action@1bbb4280446f9630e8e21a18012cbacf3b0f992e # v5.0.6
         with:
-          path: dossier-sync
+          path: wiki-stage
           strategy: clone
           dry-run: ${{ !inputs.publish }}
           disable-empty-commits: true
-          commit-message: "Synchronize wiki from repository ${{ github.sha }}"
+          commit-message: "Synchronize doc/ with wiki from ${{ github.sha }}"
